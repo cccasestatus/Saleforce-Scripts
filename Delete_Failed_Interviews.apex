@@ -3,7 +3,7 @@
 List<FlowInterview> interviewsToDelete = [
     SELECT Id, InterviewStatus, FlowVersion, FlowDefinition.DeveloperName
     FROM FlowInterview
-    WHERE InterviewStatus = 'Failed'
+    WHERE InterviewStatus = 'Error'
       AND FlowDefinition.DeveloperName = 'Case_Status_Sync_Up_Flow'
       AND FlowVersion = 27
 ];
