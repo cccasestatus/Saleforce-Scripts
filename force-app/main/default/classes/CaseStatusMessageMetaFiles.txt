@@ -1,0 +1,6 @@
+This file is a placeholder to commit the following meta.xml files that will be created:
+
+- CaseStatusMessageEnums.cls-meta.xml
+- CaseStatusMessageAssigner.cls-meta.xml
+- CaseStatusMessageMigrationBatch.cls-meta.xml
+- CaseStatusMessageInvocable.cls-meta.xml
