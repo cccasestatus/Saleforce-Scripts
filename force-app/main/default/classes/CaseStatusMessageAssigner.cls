@@ -24,22 +24,23 @@ public with sharing class CaseStatusMessageAssigner {
      * Decision result for a single message at time T.
      */
     public class Decision {
-        public Id intakeId;
-        public Id matterId;
+        public List<Id> intakeIds;
+        public List<Id> matterIds;
         public Integer openIntakesCount;
         public Integer activeMattersCount;
-        public static Decision none(Integer oi, Integer am) {
-            Decision d = new Decision();
-            d.openIntakesCount = oi;
-            d.activeMattersCount = am;
-            return d;
+        public Decision initNone(Integer oi, Integer am) {
+            this.intakeIds = new List<Id>();
+            this.matterIds = new List<Id>();
+            this.openIntakesCount = oi;
+            this.activeMattersCount = am;
+            return this;
         }
     }
 
     /**
      * Compute assignment for a given Party and timepoint T using preloaded candidate collections.
-     * - If exactly one open intake at T => select Intake
-     * - Else if exactly one active matter at T => select Matter
+     * - If one or more open intakes at T => select ALL such Intakes
+     * - Else if one or more active matters at T => select ALL such Matters
      * - Else => neither
      */
     public static Decision decide(Id partyId, Datetime T, List<IntakeDTO> allIntakesForParty, List<MatterDTO> allMattersForParty) {
@@ -62,22 +63,28 @@ public with sharing class CaseStatusMessageAssigner {
         Integer oi = openIntakes.size();
         Integer am = activeMatters.size();
 
-        // Deterministic assignment logic
-        if (oi == 1) {
+        // Updated assignment logic: duplicate across all eligible records at time T
+        if (oi > 0) {
             Decision d = new Decision();
-            d.intakeId = openIntakes[0].id;
+            d.intakeIds = new List<Id>();
+            for (IntakeDTO i : openIntakes) {
+                d.intakeIds.add(i.id);
+            }
             d.openIntakesCount = oi;
             d.activeMattersCount = am;
             return d;
         }
-        if (am == 1) {
+        if (am > 0) {
             Decision d = new Decision();
-            d.matterId = activeMatters[0].id;
+            d.matterIds = new List<Id>();
+            for (MatterDTO m : activeMatters) {
+                d.matterIds.add(m.id);
+            }
             d.openIntakesCount = oi;
             d.activeMattersCount = am;
             return d;
         }
-        return Decision.none(oi, am);
+        return new Decision().initNone(oi, am);
     }
 
     /**
@@ -104,9 +111,10 @@ public with sharing class CaseStatusMessageAssigner {
         if (m == null || T == null || m.createdDate == null || m.createdDate > T) return false; // return-early
         if (m.closedDate == null) return true;
 
-        // closedDate is Date-only; treat as end-of-day UTC
+        // closedDate is Date-only; treat as end-of-day UTC (inclusive)
         Datetime closedEodUtc = Datetime.newInstanceGmt(m.closedDate.year(), m.closedDate.month(), m.closedDate.day(), 23, 59, 59);
-        closedEodUtc = closedEodUtc.addMillis(999);
-        return closedEodUtc.getTime() >= T.getTime();
+        // Apex doesn't support addMilliseconds; emulate by adding one second and subtracting 1 ms via getTime math
+        Long closedEodMillis = closedEodUtc.getTime() + 999;
+        return closedEodMillis >= T.getTime();
     }
 }

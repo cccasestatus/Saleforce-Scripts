@@ -20,7 +20,7 @@ public with sharing class CaseStatusMessageInvocable {
      * Launches the batch end-to-end over full historical dataset.
      */
     @InvocableMethod(label='Run Case Status Message Migration' description='Creates/updates Case_Status_Message__c from Banjaxed Conversation Messages.')
-    public static List<Response> run(List<Request> requests) {
+    public static List<Response> run(List<String> requests) {
         // Full historical, no filters
         Id jobId = Database.executeBatch(new CaseStatusMessageMigrationBatch(), 200);
         Response r = new Response();

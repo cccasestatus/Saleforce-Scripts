@@ -70,8 +70,11 @@ public with sharing class CaseStatusMessageMigrationBatch implements Database.Ba
             partyToIntakes.get(dto.clientId).add(dto);
         }
 
-        // Build upserts for Case_Status_Message__c. Use External Id for idempotency.
-        List<Case_Status_Message__c> toUpsert = new List<Case_Status_Message__c>();
+        // Build upserts for Case_Status_Message__c.
+        // NOTE: We now create duplicate messages across ALL eligible Intakes or Matters at T.
+        // External Id Source_Message_Id__c can no longer uniquely identify per (Message,Party) when duplicating,
+        // so we will perform insert with partial success instead of upsert by that External Id.
+        List<Case_Status_Message__c> toInsert = new List<Case_Status_Message__c>();
 
         for (banjaxed_cm__Conversation_Message__c m : msgs) {
             Id partyId = (Id) m.banjaxed_cm__Conversation__r.banjaxed_cm__Party__c;
@@ -84,33 +87,63 @@ public with sharing class CaseStatusMessageMigrationBatch implements Database.Ba
 
             CaseStatusMessageAssigner.Decision decision = CaseStatusMessageAssigner.decide(partyId, T, intakes, matters);
 
-            Case_Status_Message__c target = new Case_Status_Message__c();
-            // Deterministic mappings
-            target.Party__c = partyId;
-            target.Message__c = m.banjaxed_cm__Message_Body__c;
-            target.CreatedDate = T;
-
-            // Idempotency key
-            target.Source_Message_Id__c = (String) m.Id;
-
-            // Assignment logic (never assign when count == 0 or > 1)
-            if (decision.openIntakesCount == 1) {
-                target.Intake__c = decision.intakeId;
-                target.Matter__c = null;
-            } else if (decision.activeMattersCount == 1) {
-                target.Matter__c = decision.matterId;
-                target.Intake__c = null;
-            } else {
-                target.Matter__c = null;
-                target.Intake__c = null;
+            // Determine duplication context
+            Integer dupCount = 0;
+            List<Id> linkIds = new List<Id>();
+            Boolean linkingIntakes = false;
+            if (decision.openIntakesCount != null && decision.openIntakesCount > 0 && decision.intakeIds != null && !decision.intakeIds.isEmpty()) {
+                dupCount = decision.intakeIds.size();
+                linkIds.addAll(decision.intakeIds);
+                linkingIntakes = true;
+            } else if (decision.activeMattersCount != null && decision.activeMattersCount > 0 && decision.matterIds != null && !decision.matterIds.isEmpty()) {
+                dupCount = decision.matterIds.size();
+                linkIds.addAll(decision.matterIds);
+                linkingIntakes = false;
             }
 
-            toUpsert.add(target);
+            // Generate a single group key per message if this message will create duplicates
+            // Apex does not have createUuid(); use String.valueOf(UUID.randomUUID())
+            String groupKey = (dupCount > 1) ? String.valueOf(UUID.randomUUID()) : null;
+
+            if (dupCount > 0) {
+                for (Id linkId : linkIds) {
+                    Case_Status_Message__c rec = new Case_Status_Message__c();
+                    rec.Party__c = partyId;
+                    rec.Message__c = m.banjaxed_cm__Message_Body__c;
+                    rec.CreatedDate = T;
+                    rec.Source_Message_Id__c = (String) m.Id; // same source id across duplicates
+                    rec.Is_Historical__c = true;
+                    rec.Is_Duplicate__c = (dupCount > 1);
+                    if (groupKey != null) rec.Group_Key__c = groupKey;
+                    if (dupCount > 1) rec.Duplicate_Count__c = dupCount;
+
+                    if (linkingIntakes) {
+                        rec.Intake__c = linkId;
+                        rec.Matter__c = null;
+                    } else {
+                        rec.Matter__c = linkId;
+                        rec.Intake__c = null;
+                    }
+                    toInsert.add(rec);
+                }
+            } else {
+                // No eligible records at T — insert an unassigned message record, still mark as historical
+                Case_Status_Message__c rec = new Case_Status_Message__c();
+                rec.Party__c = partyId;
+                rec.Message__c = m.banjaxed_cm__Message_Body__c;
+                rec.CreatedDate = T;
+                rec.Matter__c = null;
+                rec.Intake__c = null;
+                rec.Source_Message_Id__c = (String) m.Id;
+                rec.Is_Historical__c = true;
+                rec.Is_Duplicate__c = false;
+                toInsert.add(rec);
+            }
         }
 
-        if (!toUpsert.isEmpty()) {
-            // Upsert by External Id in USER_MODE for sharing/FLS compliance.
-            Database.UpsertResult[] results = Database.upsert(toUpsert, Case_Status_Message__c.Fields.Source_Message_Id__c, /* allOrNone */ false);
+        if (!toInsert.isEmpty()) {
+            // Insert with partial success in USER_MODE for sharing/FLS compliance.
+            Database.SaveResult[] results = Database.insert(toInsert, /* allOrNone */ false);
             // Metrics only: no debug in prod; failures are acceptable per-record with partial success.
         }
     }
