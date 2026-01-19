@@ -65,9 +65,9 @@ private class CaseStatusMessageAssignerTest {
 
         // Build 2 open intakes and 0 active matters
         List<CaseStatusMessageAssigner.IntakeDTO> intakes = new List<CaseStatusMessageAssigner.IntakeDTO>();
-        for (Integer n = 0; n < 2; n++) {
+        for (Integer n = 1; n < 3; n++) {
             CaseStatusMessageAssigner.IntakeDTO i = new CaseStatusMessageAssigner.IntakeDTO();
-            i.id = Id.valueOf('00100000000000' + String.valueOf(10+n) + 'AAA');
+            i.id = Id.valueOf('00100000000000' + String.valueOf(1+n) + 'AAA');
             i.createdDate = nowDt.addDays(-n-1);
             i.matterId = null;
             i.status = 'Open';
@@ -83,9 +83,9 @@ private class CaseStatusMessageAssignerTest {
 
         // Now no open intakes but 3 active matters
         intakes.clear();
-        for (Integer n = 0; n < 3; n++) {
+        for (Integer n = 1; n < 4; n++) {
             CaseStatusMessageAssigner.MatterDTO m = new CaseStatusMessageAssigner.MatterDTO();
-            m.id = Id.valueOf('00100000000003' + String.valueOf(10+n) + 'AAA');
+            m.id = Id.valueOf('00100000000003' + String.valueOf(1+n) + 'AAA');
             m.clientId = Id.valueOf('001000000000200AAA');
             m.createdDate = nowDt.addDays(-n-5);
             m.closedDate = null;

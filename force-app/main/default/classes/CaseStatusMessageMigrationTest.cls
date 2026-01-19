@@ -42,7 +42,7 @@ private without sharing class CaseStatusMessageMigrationTest {
         litify_pm__Matter__c m3 = new litify_pm__Matter__c(
             litify_pm__Display_Name__c= 'M3',
             litify_pm__Client__c = a2.Id,
-            CreatedDate = system.now().addDays(-1)
+            CreatedDate = system.now()
         );
 
         // Intakes for A1

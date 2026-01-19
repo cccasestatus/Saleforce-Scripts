@@ -101,56 +101,77 @@ public with sharing class CaseStatusMessageMigrationBatch implements Database.Ba
 
             CaseStatusMessageAssigner.Decision decision = CaseStatusMessageAssigner.decide(partyId, T, intakes, matters);
 
-            // Determine duplication context
-            Integer dupCount = 0;
-            List<Id> linkIds = new List<Id>();
-            Boolean linkingIntakes = false;
-            if (decision.openIntakesCount != null && decision.openIntakesCount > 0 && decision.intakeIds != null && !decision.intakeIds.isEmpty()) {
-                dupCount = decision.intakeIds.size();
-                linkIds.addAll(decision.intakeIds);
-                linkingIntakes = true;
-            } else if (decision.activeMattersCount != null && decision.activeMattersCount > 0 && decision.matterIds != null && !decision.matterIds.isEmpty()) {
-                dupCount = decision.matterIds.size();
-                linkIds.addAll(decision.matterIds);
-                linkingIntakes = false;
+            // Determine duplication context (supports Intake + Matter together)
+            List<Id> intakeLinkIds = new List<Id>();
+            List<Id> matterLinkIds  = new List<Id>();
+
+            if (decision.openIntakesCount != null && decision.openIntakesCount > 0 &&
+                decision.intakeIds != null && !decision.intakeIds.isEmpty()) {
+                intakeLinkIds.addAll(decision.intakeIds);
             }
 
-            // Generate a single group key for all duplicates from the same source message
+            if (decision.activeMattersCount != null && decision.activeMattersCount > 0 &&
+                decision.matterIds != null && !decision.matterIds.isEmpty()) {
+                matterLinkIds.addAll(decision.matterIds);
+            }
+
+            // Total duplicates are across BOTH types
+            Integer dupCount = intakeLinkIds.size() + matterLinkIds.size();
+
+            // Single group key shared across all duplicates for this source message
             String groupKey = (dupCount > 1) ? String.valueOf(UUID.randomUUID()) : null;
 
             // Create records for all messages from the same source
             for (banjaxed_cm__Conversation_Message__c m : sourceMessages) {
                 if (dupCount > 0) {
-                    // For each eligible record (intake/matter), create a separate record
-                    for (Id linkId : linkIds) {
+
+                    // Intake-linked records
+                    for (Id intakeId : intakeLinkIds) {
                         Case_Status_Message__c rec = new Case_Status_Message__c();
                         rec.Party__c = partyId;
                         rec.Message__c = m.banjaxed_cm__Message_Body__c;
                         rec.CreatedDate = T;
-                        rec.Source_Message_Id__c = (String) m.Id; // same source id across duplicates
+                        rec.Source_Message_Id__c = (String)m.Id;
                         rec.Is_Historical__c = true;
+
                         rec.Is_Duplicate__c = (dupCount > 1);
                         if (groupKey != null) rec.Group_Key__c = groupKey;
-                        if (dupCount > 1) rec.Duplicate_Count__c = dupCount; 
+                        if (dupCount > 1) rec.Duplicate_Count__c = dupCount;
 
-                        if (linkingIntakes) {
-                            rec.Intake__c = linkId;
-                            rec.Matter__c = null;
-                        } else {
-                            rec.Matter__c = linkId;
-                            rec.Intake__c = null;
-                        }
+                        rec.Intake__c = intakeId;
+                        rec.Matter__c = null;
+
                         toInsert.add(rec);
                     }
+
+                    // Matter-linked records
+                    for (Id matterId : matterLinkIds) {
+                        Case_Status_Message__c rec = new Case_Status_Message__c();
+                        rec.Party__c = partyId;
+                        rec.Message__c = m.banjaxed_cm__Message_Body__c;
+                        rec.CreatedDate = T;
+                        rec.Source_Message_Id__c = (String)m.Id;
+                        rec.Is_Historical__c = true;
+
+                        rec.Is_Duplicate__c = (dupCount > 1);
+                        if (groupKey != null) rec.Group_Key__c = groupKey;
+                        if (dupCount > 1) rec.Duplicate_Count__c = dupCount;
+
+                        rec.Matter__c = matterId;
+                        rec.Intake__c = null;
+
+                        toInsert.add(rec);
+                    }
+
                 } else {
-                    // No eligible records at T — insert an unassigned message record, still mark as historical
+                    // No eligible records at T — insert an unassigned message record
                     Case_Status_Message__c rec = new Case_Status_Message__c();
                     rec.Party__c = partyId;
                     rec.Message__c = m.banjaxed_cm__Message_Body__c;
                     rec.CreatedDate = T;
                     rec.Matter__c = null;
                     rec.Intake__c = null;
-                    rec.Source_Message_Id__c = (String) m.Id;
+                    rec.Source_Message_Id__c = (String)m.Id;
                     rec.Is_Historical__c = true;
                     rec.Is_Duplicate__c = false;
                     toInsert.add(rec);
@@ -159,8 +180,14 @@ public with sharing class CaseStatusMessageMigrationBatch implements Database.Ba
         }
 
         if (!toInsert.isEmpty()) {
-            // Insert with partial success in USER_MODE for sharing/FLS compliance.
-            Database.SaveResult[] results = Database.insert(toInsert, /* allOrNone */ false);
+            Database.SaveResult[] results = Database.insert(toInsert, false);
+            for (Integer i = 0; i < results.size(); i++) {
+                if (!results[i].isSuccess()) {
+                    for (Database.Error e : results[i].getErrors()) {
+                        System.debug('Insert failed idx=' + i + ' err=' + e.getMessage());
+                    }
+                }
+            }
         }
     }
 

@@ -7,7 +7,7 @@ private class CaseStatusMessageInvocableTest {
     @IsTest
     static void testInvocableLaunchesBatch() {
         // Prepare minimal dataset so the batch has something to iterate over
-        Account a = new Account(Name = 'Party X');
+        Account a = new Account(Name = 'Party X', 	litify_pm__Last_Name__c = 'X');
         insert a;
 
         banjaxed_cm__Conversation__c conv = new banjaxed_cm__Conversation__c(
