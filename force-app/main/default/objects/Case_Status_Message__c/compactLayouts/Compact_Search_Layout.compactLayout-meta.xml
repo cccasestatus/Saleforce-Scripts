@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CompactLayout xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Compact_Search_Layout</fullName>
+    <fields>Intake__c</fields>
+    <fields>Matter__c</fields>
+    <fields>Party__c</fields>
+    <label>Compact Search Layout</label>
+</CompactLayout>

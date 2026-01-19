@@ -4,8 +4,6 @@
  */
 @IsTest
 private class CaseStatusMessageInvocableTest {
-    private class Req extends CaseStatusMessageInvocable.Request {}
-
     @IsTest
     static void testInvocableLaunchesBatch() {
         // Prepare minimal dataset so the batch has something to iterate over
@@ -25,8 +23,8 @@ private class CaseStatusMessageInvocableTest {
         );
         insert msg;
 
-        // Call invocable
-        List<Req> reqs = new List<Req>{ new Req() };
+        // Call invocable - pass empty list as strings (no filters)
+        List<String> reqs = new List<String>{};
 
         Test.startTest();
         List<CaseStatusMessageInvocable.Response> resps = CaseStatusMessageInvocable.run(reqs);
@@ -41,7 +39,7 @@ private class CaseStatusMessageInvocableTest {
             FROM Case_Status_Message__c
             WHERE Source_Message_Id__c = :String.valueOf(msg.Id)
         ];
-        System.assertTrue(created.size() >= 1, 'Expect at least one Case Status Message created from invocable-launched batch');
+        System.assert(created.size() >= 1);
         for (Case_Status_Message__c c : created) {
             System.assertEquals(true, c.Is_Historical__c, 'Historical flag set by migration');
         }
